@@ -2,4 +2,7 @@ visualizer: main.c
 	cc main.c -g -o test -lm -fopenmp -lglfw -lGL -lX11 -lpthread -lXrandr -lXi -lm -ldl -lGLEW 
 
 fast: main.c
-	cc main.c -Ofast -o test -lm -fopenmp -lglfw -lGL -lX11 -lpthread -lXrandr -lXi -lm -ldl -lGLEW 
+	gcc main.c -Ofast -o test -lm -fopenmp -lglfw -lGL -lX11 -lpthread -lXrandr -lXi -lm -ldl -lGLEW 
+
+clang: main.c
+	clang main.c -Ofast -o test -lm -fopenmp -lglfw -lGL -lX11 -lpthread -lXrandr -lXi -lm -ldl -lGLEW 

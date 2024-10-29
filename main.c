@@ -308,29 +308,24 @@ double viewport_coord_length (viewport_coord a) {
 	return sqrt(a.x*a.x + a.y*a.y+a.z*a.z);
 }
 
-rgb_color raytrace(scene_information scene, viewport_coord viewport_position) {
-	double closest_t = inf;	
-	int closest_sphere = -1;
-	//printf("Raytracing \n");
-
+//viewport_coord viewport_position
+void calculate_closest_intersection(scene_information scene, viewport_coord origin, viewport_coord direction, double t_min, double t_max,double * closest_t, int * closest_sphere) {
 	for(int i = 0; i<scene.n_spheres; i++) {
-		viewport_coord t1t2 = intersect_ray_sphere(scene.camera_position, viewport_position, scene.spheres[i]);
+		viewport_coord t1t2 = intersect_ray_sphere(origin, direction, scene.spheres[i]);
 		double t1 = t1t2.x;
 		double t2 = t1t2.y;
-		if (t1 < scene.max_t && scene.min_t < t1 && t1 < closest_t) {
-			closest_t = t1;
-			closest_sphere = i;
+		if (t1 < t_max && t_min < t1 && t1 < *closest_t) {
+			*closest_t = t1;
+			*closest_sphere = i;
 		}	
-		if (t2 < scene.max_t && scene.min_t < t2 && t2 < closest_t) {
-			closest_t = t2;
-			closest_sphere = i;
+		if (t2 < t_max && t_min < t2 && t2 < *closest_t) {
+			*closest_t = t2;
+			*closest_sphere = i;
 		}	
 	}
-	
-	if (closest_sphere == -1) {
-		return scene.background_color;		
-	} else {
-		//printf("Returning closer sphere\n");
+}
+
+rgb_color compute_color(scene_information scene, viewport_coord viewport_position, int closest_sphere, double closest_t) {
 		rgb_color return_color = scene.spheres[closest_sphere].color;
 
 		double light_intensity = scene.diffuse;
@@ -348,6 +343,14 @@ rgb_color raytrace(scene_information scene, viewport_coord viewport_position) {
 				exit(0);
 			} 
 			
+			//shadow check here
+			int shadow_sphere = -1;
+			double shadow_t = scene.max_t;	
+			calculate_closest_intersection(scene, point, light_vector, 0.001, scene.max_t, &shadow_t, &shadow_sphere);	
+			if (shadow_sphere != -1) {
+				continue;
+			}
+
 			//diffuse
 			double n_dot_l = viewport_coord_dot(normal, light_vector);
 			if (n_dot_l > 0) {
@@ -369,6 +372,18 @@ rgb_color raytrace(scene_information scene, viewport_coord viewport_position) {
 		}
 
 		return scale_color(return_color, light_intensity);
+}
+
+rgb_color raytrace(scene_information scene, viewport_coord viewport_position) {
+	double closest_t = inf;	
+	int closest_sphere = -1;
+
+	calculate_closest_intersection(scene, scene.camera_position, viewport_coord_subtract(viewport_position, scene.camera_position), scene.min_t, scene.max_t, &closest_t, &closest_sphere);
+	
+	if (closest_sphere == -1) {
+		return scene.background_color;		
+	} else {
+		return compute_color(scene, viewport_position, closest_sphere, closest_t);
 	}
 }
 
@@ -423,7 +438,7 @@ int main() {
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, scene.screen_width, scene.screen_height, 0, GL_RGB ,GL_UNSIGNED_BYTE, screen);
 	glGenerateMipmap(GL_TEXTURE_2D);
 
-	//int i = 0;
+	int i = 0;
 
 	while(!glfwWindowShouldClose(window)) {
 		handle_close(window);
@@ -443,10 +458,10 @@ int main() {
 		unsigned char * screen = calloc(scene.screen_width*scene.screen_height*3, sizeof(unsigned char));
 		draw_on_canvas(screen, scene);
 
-		//i ++;
-		//if (i > 200) {
-		//	exit(0);
-		//}
+		i ++;
+		if (i > 60) {
+			exit(0);
+		}
 	}
 
 	glfwTerminate();
