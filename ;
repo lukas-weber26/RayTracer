@@ -155,19 +155,8 @@ light light_create(double x, double y, double z, light_type type, double intensi
 	return new_light;
 } 
 
-viewport_coord viewport_coord_normalize(viewport_coord a) {
-	double magnitude = sqrt(a.x*a.x + a.y*a.y+a.z*a.z);
-	viewport_coord resulting_coord = {a.x/magnitude, a.y/magnitude, a.z/magnitude};
-	return resulting_coord;
-}
-
 viewport_coord viewport_coord_subtract(viewport_coord a, viewport_coord b) {
 	viewport_coord resulting_coord = {a.x-b.x, a.y-b.y, a.z - b.z};
-	return resulting_coord;
-}
-
-viewport_coord viewport_coord_add(viewport_coord a, viewport_coord b) {
-	viewport_coord resulting_coord = {a.x+b.x, a.y+b.y, a.z + b.z};
 	return resulting_coord;
 }
 
@@ -179,11 +168,6 @@ viewport_coord viewport_coord_scale(viewport_coord a, double b) {
 double viewport_coord_dot(viewport_coord a, viewport_coord b) {
 	double result = a.x*b.x + a.y*b.y + a.z*b.z;
 	return result;
-}
-
-viewport_coord viewport_coord_get(double x, double y, double z) {
-	viewport_coord new = {x,y,z};
-	return new;
 }
 
 sphere create_sphere(double x, double y, double z, double rad, unsigned char r, unsigned char g, unsigned char b) {
@@ -299,12 +283,7 @@ rgb_color scale_color (rgb_color input_color, double scale) {
 }
 
 viewport_coord light_to_viewport_coord (light input_light) {
-	viewport_coord output_coord = {input_light.x, input_light.y, input_light.z};
-	return output_coord;
-}
-
-double viewport_coord_length (viewport_coord a) {
-	return sqrt(a.x*a.x + a.y*a.y+a.z*a.z);
+	viewport_coord output_coord =	
 }
 
 rgb_color raytrace(scene_information scene, viewport_coord viewport_position) {
@@ -334,24 +313,16 @@ rgb_color raytrace(scene_information scene, viewport_coord viewport_position) {
 
 		double light_intensity = scene.diffuse;
 		viewport_coord light_vector; 
-		viewport_coord point =  viewport_coord_add(viewport_coord_scale(viewport_coord_subtract(viewport_position,scene.camera_position),closest_t),scene.camera_position);
-		viewport_coord normal = viewport_coord_normalize(viewport_coord_subtract(point, scene.spheres[closest_sphere].center));
 
 		for (int i = 0; i < scene.n_lights; i ++) {
 			if (scene.lights[i].type == POINT) {
-				light_vector = viewport_coord_subtract(light_to_viewport_coord(scene.lights[i]), point);
+				light_vector = viewport_coord_subtract(scene.lights[i]);
 			} else if (scene.lights[i].type == DIRECTIONAL) {
-				light_vector = viewport_coord_get(scene.lights[i].x, scene.lights[i].y,scene.lights[i].z);
+
 			} else {
 				printf("Bad light.");
 				exit(0);
 			} 
-
-			double n_dot_l = viewport_coord_dot(normal, light_vector);
-			if (n_dot_l > 0) {
-				light_intensity += scene.lights[i].intensity * n_dot_l / (viewport_coord_length(normal) * viewport_coord_length(light_vector));
-			}
-
 		}
 
 		if (light_intensity > 1.0) {
