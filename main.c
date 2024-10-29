@@ -138,6 +138,7 @@ typedef struct sphere {
 	viewport_coord center;	
 	double rad;	
 	rgb_color color;
+	int specular;
 } sphere; 
 
 typedef enum {POINT, DIRECTIONAL} light_type;
@@ -186,10 +187,10 @@ viewport_coord viewport_coord_get(double x, double y, double z) {
 	return new;
 }
 
-sphere create_sphere(double x, double y, double z, double rad, unsigned char r, unsigned char g, unsigned char b) {
+sphere create_sphere(double x, double y, double z, double rad, unsigned char r, unsigned char g, unsigned char b, int specular) {
 	viewport_coord sphere_coord = {x,y,z};
 	rgb_color sphere_color = {r,g,b};
-	sphere final_sphere = {sphere_coord, rad, sphere_color};
+	sphere final_sphere = {sphere_coord, rad, sphere_color, specular};
 	return final_sphere;
 }
 
@@ -346,12 +347,21 @@ rgb_color raytrace(scene_information scene, viewport_coord viewport_position) {
 				printf("Bad light.");
 				exit(0);
 			} 
-
+			
+			//diffuse
 			double n_dot_l = viewport_coord_dot(normal, light_vector);
 			if (n_dot_l > 0) {
 				light_intensity += scene.lights[i].intensity * n_dot_l / (viewport_coord_length(normal) * viewport_coord_length(light_vector));
 			}
 
+			//specular
+			viewport_coord R = viewport_coord_subtract(viewport_coord_scale(normal, 2 * viewport_coord_dot(normal, light_vector)), light_vector);	
+			viewport_coord V = viewport_coord_subtract(scene.camera_position, point); //this subract is a bit quiestionable, may be able to just scale by -1
+			double r_dot_v = viewport_coord_dot(R,V); 			
+			if (r_dot_v > 0) {
+				light_intensity += scene.lights[i].intensity * pow(r_dot_v/(viewport_coord_length(R) * viewport_coord_length(V)), scene.spheres[closest_sphere].specular);
+			}	
+	
 		}
 
 		if (light_intensity > 1.0) {
@@ -396,9 +406,9 @@ int main() {
 	scene.lights[0] = light_create(0.0, 1.0, 1.0, POINT,0.4);
 	scene.lights[1] = light_create(0.0, -0.3, 1.0, DIRECTIONAL ,0.4);
 	scene.n_spheres = sphere_count;
-	scene.spheres[0] = create_sphere(0.0, -0.1, 3.0, 0.3, 120, 200, 0);
-	scene.spheres[1] = create_sphere(-0.3, 0.0, 1.2, 0.2, 220, 40, 40);
-	scene.spheres[2] = create_sphere(0.4, 0.1, 2.0, 0.1, 20, 80, 240);
+	scene.spheres[0] = create_sphere(0.0, -0.1, 3.0, 0.3, 120, 200, 0, 1000);
+	scene.spheres[1] = create_sphere(-0.3, 0.0, 1.2, 0.2, 230, 40, 40, 500);
+	scene.spheres[2] = create_sphere(0.4, 0.1, 2.0, 0.1, 20, 80, 240, 1000);
 	scene.background_color = get_color(0,0,0);
 	scene.diffuse = 0.2;
 
