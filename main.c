@@ -139,6 +139,7 @@ typedef struct sphere {
 	double rad;	
 	rgb_color color;
 	int specular;
+	double reflectvity;
 } sphere; 
 
 typedef enum {POINT, DIRECTIONAL} light_type;
@@ -187,10 +188,10 @@ viewport_coord viewport_coord_get(double x, double y, double z) {
 	return new;
 }
 
-sphere create_sphere(double x, double y, double z, double rad, unsigned char r, unsigned char g, unsigned char b, int specular) {
+sphere create_sphere(double x, double y, double z, double rad, unsigned char r, unsigned char g, unsigned char b, int specular, double reflectivity) {
 	viewport_coord sphere_coord = {x,y,z};
 	rgb_color sphere_color = {r,g,b};
-	sphere final_sphere = {sphere_coord, rad, sphere_color, specular};
+	sphere final_sphere = {sphere_coord, rad, sphere_color, specular, reflectivity};
 	return final_sphere;
 }
 
@@ -229,6 +230,7 @@ typedef struct scene_information {
 	double viewprot_height; 
 	double min_t;
 	double max_t;
+	int recursion_depht;
 	viewport_coord camera_position;
 	sphere spheres[sphere_count];
 	int n_spheres;
@@ -325,13 +327,16 @@ void calculate_closest_intersection(scene_information scene, viewport_coord orig
 	}
 }
 
-rgb_color compute_color(scene_information scene, viewport_coord viewport_position, int closest_sphere, double closest_t) {
+viewport_coord reflect_ray (viewport_coord N, viewport_coord R) { // light_vector
+	return viewport_coord_subtract(viewport_coord_scale(N, 2 * viewport_coord_dot(N, R)), R);	
+}
+
+//rgb_color compute_color(scene_information scene, viewport_coord viewport_position, int closest_sphere, double closest_t) {
+rgb_color compute_color(scene_information scene, viewport_coord point, viewport_coord normal, viewport_coord direction ,int closest_sphere, double closest_t) {
 		rgb_color return_color = scene.spheres[closest_sphere].color;
 
 		double light_intensity = scene.diffuse;
 		viewport_coord light_vector; 
-		viewport_coord point =  viewport_coord_add(viewport_coord_scale(viewport_coord_subtract(viewport_position,scene.camera_position),closest_t),scene.camera_position);
-		viewport_coord normal = viewport_coord_normalize(viewport_coord_subtract(point, scene.spheres[closest_sphere].center));
 
 		for (int i = 0; i < scene.n_lights; i ++) {
 			if (scene.lights[i].type == POINT) {
@@ -346,7 +351,7 @@ rgb_color compute_color(scene_information scene, viewport_coord viewport_positio
 			//shadow check here
 			int shadow_sphere = -1;
 			double shadow_t = scene.max_t;	
-			calculate_closest_intersection(scene, point, light_vector, 0.001, scene.max_t, &shadow_t, &shadow_sphere);	
+			calculate_closest_intersection(scene, point, light_vector, 0.0001, scene.max_t, &shadow_t, &shadow_sphere);	
 			if (shadow_sphere != -1) {
 				continue;
 			}
@@ -358,8 +363,8 @@ rgb_color compute_color(scene_information scene, viewport_coord viewport_positio
 			}
 
 			//specular
-			viewport_coord R = viewport_coord_subtract(viewport_coord_scale(normal, 2 * viewport_coord_dot(normal, light_vector)), light_vector);	
-			viewport_coord V = viewport_coord_subtract(scene.camera_position, point); //this subract is a bit quiestionable, may be able to just scale by -1
+			viewport_coord R = reflect_ray(normal, light_vector);
+			viewport_coord V = direction;
 			double r_dot_v = viewport_coord_dot(R,V); 			
 			if (r_dot_v > 0) {
 				light_intensity += scene.lights[i].intensity * pow(r_dot_v/(viewport_coord_length(R) * viewport_coord_length(V)), scene.spheres[closest_sphere].specular);
@@ -374,22 +379,46 @@ rgb_color compute_color(scene_information scene, viewport_coord viewport_positio
 		return scale_color(return_color, light_intensity);
 }
 
-rgb_color raytrace(scene_information scene, viewport_coord viewport_position) {
+rgb_color color_add(rgb_color a, rgb_color b) {
+	rgb_color result = {a.r + b.r, a.g + b.g, a.b + b.b};
+	return result;
+}
+
+rgb_color color_scale(rgb_color a, double s) {
+	rgb_color result = {a.r*s, a.g*s, a.b*s};
+	return result;
+}
+
+rgb_color raytrace(scene_information scene, viewport_coord origin, viewport_coord direction, int recursion_depth, double min_t, double max_t) {
 	double closest_t = inf;	
 	int closest_sphere = -1;
 
-	calculate_closest_intersection(scene, scene.camera_position, viewport_coord_subtract(viewport_position, scene.camera_position), scene.min_t, scene.max_t, &closest_t, &closest_sphere);
+	calculate_closest_intersection(scene, origin, direction, min_t, max_t, &closest_t, &closest_sphere);
 	
 	if (closest_sphere == -1) {
 		return scene.background_color;		
-	} else {
-		return compute_color(scene, viewport_position, closest_sphere, closest_t);
+	} 
+	
+	viewport_coord point =  viewport_coord_add(viewport_coord_scale(direction,closest_t),origin);
+	viewport_coord normal = viewport_coord_normalize(viewport_coord_subtract(point, scene.spheres[closest_sphere].center));
+	viewport_coord usefull_direction = viewport_coord_scale(direction, -1.0);//viewport_coord_subtract(scene.camera_position, point); 
+
+	rgb_color local_color = compute_color(scene, point, normal, usefull_direction, closest_sphere, closest_t);
+
+	if (recursion_depth <= 0) {
+		return local_color;
 	}
+
+	viewport_coord reflected_ray = reflect_ray(normal, usefull_direction);
+	rgb_color reflected_color = raytrace(scene, point, reflected_ray, recursion_depth - 1, 0.0001, max_t);
+	double r = scene.spheres[closest_sphere].reflectvity;
+
+	return color_add(color_scale(local_color,(1-r)),color_scale(reflected_color,r));
 }
 
 void handle_canvas_point(unsigned char * screen, scene_information scene, canvas_coord canvas_position) {
 	viewport_coord coord = canvas_to_viewport(canvas_position, scene);
-	rgb_color color = raytrace(scene, coord);
+	rgb_color color = raytrace(scene, scene.camera_position, viewport_coord_subtract(coord, scene.camera_position), 100, scene.min_t, scene.max_t);
 	draw_canvas_on_screen(screen, canvas_position, color, scene);
 }
 
@@ -408,22 +437,23 @@ void draw_on_canvas(unsigned char * screen, scene_information scene) {
 int main() {	
 
 	scene_information scene;
-	scene.screen_width = 1920; 
-	scene.screen_height = 1080; 
-	scene.canvas_width = 1920; 
-	scene.canvas_height = 1080; 
+	scene.screen_width = 1920*4;//1920; 
+	scene.screen_height = 1080*4;//1080; 
+	scene.canvas_width = 1920*4;//1920; 
+	scene.canvas_height = 1080*4;//1080; 
 	scene.viewport_width = 1.0; 
 	scene.viewprot_height = 0.6; 
 	scene.camera_position = create_viewport_coord(0.0,0.0,0.0);
+	scene.recursion_depht = 10;
 	scene.max_t = inf;
 	scene.min_t = 1.0;
 	scene.n_lights = light_count;
-	scene.lights[0] = light_create(0.0, 1.0, 1.0, POINT,0.4);
+	scene.lights[0] = light_create(0.0, 1.0, 1.0, POINT,0.7);
 	scene.lights[1] = light_create(0.0, -0.3, 1.0, DIRECTIONAL ,0.4);
 	scene.n_spheres = sphere_count;
-	scene.spheres[0] = create_sphere(0.0, -0.1, 3.0, 0.3, 120, 200, 0, 1000);
-	scene.spheres[1] = create_sphere(-0.3, 0.0, 1.2, 0.2, 230, 40, 40, 500);
-	scene.spheres[2] = create_sphere(0.4, 0.1, 2.0, 0.1, 20, 80, 240, 1000);
+	scene.spheres[0] = create_sphere(0.0, -0.1, 1.3, 0.2, 120, 200, 0, 1000, 0.2);
+	scene.spheres[1] = create_sphere(-0.3, 0.0, 1.2, 0.2, 230, 40, 40, 500,0.4);
+	scene.spheres[2] = create_sphere(0.2, 0.1, 1.1, 0.1, 220, 80, 40, 100,0.3);
 	scene.background_color = get_color(0,0,0);
 	scene.diffuse = 0.2;
 
@@ -455,13 +485,6 @@ int main() {
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 
-		unsigned char * screen = calloc(scene.screen_width*scene.screen_height*3, sizeof(unsigned char));
-		draw_on_canvas(screen, scene);
-
-		i ++;
-		if (i > 60) {
-			exit(0);
-		}
 	}
 
 	glfwTerminate();
